@@ -182,12 +182,13 @@ def convert_branch_statistics(infile, outfile, code_to_species):
 
 # 5. MAIN
 
-def main(ortho_folder, n_threads):
+def main(ortho_folder, n_threads, output_folder=None):
     wd    = os.path.join(ortho_folder, "WorkingDirectory")
     glade = os.path.join(wd, "GladeWD")
 
-    out_gld = os.path.join(ortho_folder, "GainsLossDuplication")
-    out_anc = os.path.join(ortho_folder, "AncestralGenomes")
+    base_out = output_folder if output_folder else ortho_folder
+    out_gld = os.path.join(base_out, "GainsLossDuplication")
+    out_anc = os.path.join(base_out, "AncestralGenomes")
 
     os.makedirs(out_gld, exist_ok=True)
     os.makedirs(out_anc, exist_ok=True)

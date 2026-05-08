@@ -146,6 +146,8 @@ def FindDuplicationsParallel(index, row, gain_nodes, ortho_folder_path, species_
     #gene_tree_file = list(gain_nodes.keys())[index] + "_tree.txt"
     #gene_tree = ete3.Tree(os.path.join(ortho_folder_path, "HOG_Gene_Trees/", gene_tree_file), quoted_node_names=True, format=1)
     orthogroup_name = list(gain_nodes.keys())[index]
+    if orthogroup_name not in gene_trees:
+        return duplications, postduplication_loss
     gene_tree= ete3.Tree(gene_trees[orthogroup_name], quoted_node_names=True, format=1)
     dupe_list = FindDuplications(gene_tree, species_tree, species_names)
     for dupe in dupe_list:
@@ -243,7 +245,7 @@ def ParaLoss(ortho_folder_path, species_tree, OG_file, gain_nodes, n_threads):
 
      
 ########################
-def main(ortho_folder_path, n_threads):
+def main(ortho_folder_path, n_threads, min_genes=4):
 
     #######################################################
     ## load required files ##
@@ -292,8 +294,8 @@ def main(ortho_folder_path, n_threads):
     
     #######################################################
     ## pre-processing
-    # remove orthogroups that have <4 genes
-    OG_file = FilterHogs(HOG_file)
+    # remove orthogroups that have fewer than min_genes genes
+    OG_file = FilterHogs(HOG_file, min_genes=min_genes)
     
     processed_OG_file = []
     for record in OG_file:

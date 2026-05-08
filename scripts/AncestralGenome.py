@@ -113,6 +113,8 @@ def GetAncestralGenes(OG, node, species_tree, ortho_folder_path, species_names):
     all_leaves_names = np.array([leaf.name for leaf in all_leaves_nodes])
     keep_mask = ~np.isin(all_leaves_names, list(dupes_to_go))
     keep_leaves = [all_leaves_nodes[i] for i in np.where(keep_mask)[0]]
+    if not keep_leaves:
+        return None
     gene_tree.prune(keep_leaves, preserve_branch_length=True)
 
     # Handle duplications before the target node:
@@ -281,6 +283,10 @@ def WriteAncestralFasta(focal_node, ancestral_genome, ortho_folder_path):
 # Wrapper for multiprocessing OG by OG processing
 def ProcessOrthogroupCurrent(index, gains_current, node, species_tree, ortho_folder_path, species_names):
     OG = gains_current[index]["Orthogroup"]
+    tree_file_path = os.path.join(ortho_folder_path, "WorkingDirectory", "GladeWD", "Resolved_Gene_Trees.txt")
+    with open(tree_file_path, "r") as f:
+        if not any(line.startswith(OG + ": ") for line in f):
+            return OG, None
     return OG, GetAncestralGenes(OG, node, species_tree, ortho_folder_path, species_names)
 
 # Build ancestral genome for a single node

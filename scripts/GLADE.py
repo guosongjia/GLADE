@@ -43,6 +43,18 @@ def main():
         default=8,
         help="Number of threads to use for multiprocessing (default: 8)"
     )
+    parser.add_argument(
+        '-m', '--min-genes',
+        type=int,
+        default=4,
+        help="Minimum number of genes per OG to include in gain/loss analysis (default: 4)"
+    )
+    parser.add_argument(
+        '-o', '--output',
+        type=str,
+        default=None,
+        help="Output folder for final results (default: same as -f folder)"
+    )
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(1)
@@ -50,6 +62,8 @@ def main():
     args = parser.parse_args()
     ortho_folder_path = args.folder
     n_threads = args.threads
+    min_genes = args.min_genes
+    output_folder = args.output
 
     # print welcome messages
     print("---------------------------------------------------")
@@ -80,7 +94,7 @@ def main():
     print("Files converted.")
     print("---------------------------------------------------")
     print("Finding Gains, Losses, Duplications...")
-    GainAndLossAndDuplication.main(ortho_folder_path, n_threads)
+    GainAndLossAndDuplication.main(ortho_folder_path, n_threads, min_genes=min_genes)
     print("Gains, Losses, Duplications found.")
     print("---------------------------------------------------")
     print("Mapping events to branches...")
@@ -95,7 +109,7 @@ def main():
     OrthoBranchChange.main(ortho_folder_path, n_threads)
     print("Branch statistics calculated.")
     print("Writing files...")
-    ReStringFiles.main(ortho_folder_path, n_threads)
+    ReStringFiles.main(ortho_folder_path, n_threads, output_folder=output_folder)
     print("Done.")
 
     elapsed_time = time.time() - start_time
