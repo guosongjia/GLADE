@@ -55,6 +55,14 @@ def main():
         default=None,
         help="Output folder for final results (default: same as -f folder)"
     )
+    parser.add_argument(
+        '-s', '--species-tree',
+        type=str,
+        default=None,
+        help="Path to a custom species tree in Newick format (e.g. IQ-TREE treefile). "
+             "If provided, overrides the OrthoFinder species tree. "
+             "Internal node labels will be added automatically."
+    )
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(1)
@@ -64,6 +72,7 @@ def main():
     n_threads = args.threads
     min_genes = args.min_genes
     output_folder = args.output
+    custom_species_tree = args.species_tree
 
     # print welcome messages
     print("---------------------------------------------------")
@@ -90,7 +99,7 @@ def main():
     # Execute the imported scripts' main functions sequentially
     print("---------------------------------------------------")
     print("Converting Files...")
-    ConvertFiles.main(ortho_folder_path, n_threads)
+    ConvertFiles.main(ortho_folder_path, n_threads, custom_species_tree=custom_species_tree)
     print("Files converted.")
     print("---------------------------------------------------")
     print("Finding Gains, Losses, Duplications...")

@@ -271,23 +271,35 @@ def Convert_Gene_Trees(Input, SpeciesDict, SequenceIDsDict, n_threads):
         os.remove(f)
     os.rmdir(tmp_dir)
 
-def Convert_Species_Tree(Input, SpeciesDict):
+def Convert_Species_Tree(Input, SpeciesDict, custom_tree_path=None):
     """
-    Convert Orthofinder species tree to numeric-coded version,
-    while preserving ALL internal node labels exactly (N0, N1, ...).
+    Convert species tree to numeric-coded version, preserving internal node labels.
+
+    If custom_tree_path is provided, use that tree instead of the OrthoFinder tree.
+    Internal node labels will be added automatically in postorder (N1, N2, ...).
+    The root is always labelled N0.
 
     Only leaf names (species names) are replaced using SpeciesDict.
     """
 
-    st_in  = os.path.join(Input, "Species_Tree", "SpeciesTree_rooted_node_labels.txt")
     st_out = os.path.join(Input, "WorkingDirectory", "GladeWD", "SpeciesTree_rooted_node_labels.txt")
 
-    # Load original tree with ETE — safest method
-    tree = ete3.Tree(st_in, quoted_node_names=True, format=1)
+    if custom_tree_path:
+        st_in = custom_tree_path
+        tree = ete3.Tree(st_in, quoted_node_names=True, format=1)
+        # Add internal node labels: root = N0, others N1, N2, ... in postorder
+        tree.name = "N0"
+        counter = 1
+        for node in tree.traverse("postorder"):
+            if not node.is_leaf() and node.name != "N0":
+                node.name = "N{}".format(counter)
+                counter += 1
+    else:
+        st_in = os.path.join(Input, "Species_Tree", "SpeciesTree_rooted_node_labels.txt")
+        tree = ete3.Tree(st_in, quoted_node_names=True, format=1)
 
     # Replace leaf names using SpeciesDict
     for leaf in tree.iter_leaves():
-
         # Orthofinder sometimes outputs leaf names with dots; normalize like SpeciesDict
         leaf_clean = os.path.splitext(leaf.name.replace(".", "_"))[0]
 
@@ -308,11 +320,11 @@ def Convert_Species_Tree(Input, SpeciesDict):
 
 
 
-def main(ortho_folder_path, n_threads):
+def main(ortho_folder_path, n_threads, custom_species_tree=None):
     parent_output_file = os.path.join(ortho_folder_path, "WorkingDirectory", "GladeWD","GLADEfiles.tsv")
     os.makedirs(os.path.dirname(parent_output_file), exist_ok=True)
     SpeciesDict, SequenceIDsDict = File_Dictionaries(ortho_folder_path)
     Convert_Orthogroups_TXT(ortho_folder_path, SequenceIDsDict)
     Convert_Gene_Trees(ortho_folder_path, SpeciesDict, SequenceIDsDict, n_threads)
-    Convert_Species_Tree(ortho_folder_path, SpeciesDict)
+    Convert_Species_Tree(ortho_folder_path, SpeciesDict, custom_tree_path=custom_species_tree)
 
