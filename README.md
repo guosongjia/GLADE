@@ -56,6 +56,7 @@ python GLADE.py -f path/to/orthofinder/results -t threads [default=8]
 | `-t` / `--threads` | Number of threads | 8 |
 | `-m` / `--min-genes` | Minimum genes per OG for gain/loss analysis | 4 |
 | `-o` / `--output` | Output folder for final results | same as `-f` |
+| `-s` / `--species-tree` | Path to a custom species tree in Newick format (e.g. IQ-TREE treefile); overrides OrthoFinder species tree; internal node labels added automatically | OrthoFinder tree |
 
 Use `-m 1` to include all OGs (including single-copy and small families) in gain/loss analysis. Duplication analysis is only performed for OGs with a resolved gene tree regardless of this setting.
 
@@ -139,6 +140,10 @@ In `GetAncestralGenes`, the second `gene_tree.prune()` call could receive an emp
 ### New feature: `--min-genes` parameter
 
 The original script hard-codes `min_genes=4`, excluding small OGs from gain/loss analysis entirely. The threshold is now a command-line parameter (`-m`/`--min-genes`, default 4). Use `-m 1` to include all OGs.
+
+### New feature: `--species-tree` parameter
+
+A custom species tree in Newick format (e.g. from IQ-TREE) can be provided via `-s`/`--species-tree`, overriding the OrthoFinder species tree. Internal node labels are added automatically in postorder traversal (root = `N0`, others `N1`, `N2`, ...). Leaf names in the custom tree must match OrthoFinder species names (i.e. the FASTA filenames without extension, e.g. `Schizosaccharomyces_pombe`). All downstream scripts are unaffected — only `ConvertFiles.py` is modified.
 
 ### New feature: `--output` parameter
 
