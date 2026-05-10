@@ -76,9 +76,6 @@ def FindLossBranch(loss_list, node_leaves):
         # child node
         children = node_leaves[sn]['children']
         # which child node DOESN'T have lost Species
-        #print(node_leaves[children[0]])
-        #print(row)
-        #print("###")
         ch0 = node_leaves[children[0]]['leaves']
         ch0 = [s.replace('.', '_') for s in ch0]
         ch1 = node_leaves[children[1]]['leaves']

@@ -58,6 +58,15 @@ python GLADE.py -f path/to/orthofinder/results -t threads [default=8]
 | `-o` / `--output` | Output folder for final results | same as `-f` |
 | `-s` / `--species-tree` | Path to a custom species tree in Newick format (e.g. IQ-TREE treefile); overrides OrthoFinder species tree; internal node labels added automatically | OrthoFinder tree |
 
+**We strongly recommend providing a custom species tree via `-s`.** The OrthoFinder species tree is inferred from gene tree topologies using the STRIDE algorithm, which can place the root incorrectly when gene trees are noisy. A dedicated phylogenetic analysis (e.g. IQ-TREE on a supermatrix of single-copy orthologs) produces branch lengths and bootstrap support that are more reliable for downstream event mapping. The root position directly determines the direction of all inferred gains and losses, so an incorrectly rooted tree will systematically misplace events across the entire analysis.
+
+The custom tree must be:
+- **rooted** — the root position encodes the outgroup and determines event directionality; an unrooted tree (e.g. a raw IQ-TREE `.treefile` with a trifurcating root) will cause errors in downstream scripts
+- in **Newick format**
+- using **leaf names that match OrthoFinder species names** (i.e. the FASTA filenames without extension, e.g. `Schizosaccharomyces_pombe`)
+
+Internal node labels are added automatically; you do not need to provide them.
+
 Use `-m 1` to include all OGs (including single-copy and small families) in gain/loss analysis. Duplication analysis is only performed for OGs with a resolved gene tree regardless of this setting.
 
 Use `-o` to write `GainsLossDuplication/` and `AncestralGenomes/` to a custom path. Intermediate files in `WorkingDirectory/GladeWD/` are unaffected.
@@ -144,6 +153,8 @@ The original script hard-codes `min_genes=4`, excluding small OGs from gain/loss
 ### New feature: `--species-tree` parameter
 
 A custom species tree in Newick format (e.g. from IQ-TREE) can be provided via `-s`/`--species-tree`, overriding the OrthoFinder species tree. Internal node labels are added automatically in postorder traversal (root = `N0`, others `N1`, `N2`, ...). Leaf names in the custom tree must match OrthoFinder species names (i.e. the FASTA filenames without extension, e.g. `Schizosaccharomyces_pombe`). All downstream scripts are unaffected — only `ConvertFiles.py` is modified.
+
+**Important:** the custom tree must be a rooted binary tree. A raw IQ-TREE `.treefile` is unrooted (trifurcating root) and must be rooted before use — for example using an outgroup in FigTree, `ete3`, or `gotree`. An unrooted tree will cause errors in `BranchGainLossDuplication.py`.
 
 ### New feature: `--output` parameter
 
