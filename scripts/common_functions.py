@@ -112,8 +112,20 @@ def extract_species_name(leaf_name, species_names):
         return None  # or handle as appropriate if no match is found
 
 ## function to find duplications, label them, and record them
-def FindDuplications(gene_tree, species_tree, species_names):
+# og_members: optional iterable of leaf names that belong to the current OG.
+# When provided, the gene tree is pruned to those leaves before analysis so
+# duplications are only reported among genes that actually belong to this OG.
+# This is required for OrthoFinder v3 Resolved_Gene_Trees, where each tree
+# spans a wider HOG than the corresponding row in Orthogroups.tsv.
+def FindDuplications(gene_tree, species_tree, species_names, og_members=None):
     duplications = []
+    if og_members is not None:
+        og_members = set(og_members)
+        leaves_to_keep = [l for l in gene_tree.get_leaves() if l.name in og_members]
+        # need at least 2 leaves to have any duplication
+        if len(leaves_to_keep) < 2:
+            return duplications
+        gene_tree.prune(leaves_to_keep, preserve_branch_length=True)
     mapping = MapGeneSpeciesTree(gene_tree, species_tree, species_names)
     gene_tree.name = "n0"
     # Convert mapping list to dict for quick lookup

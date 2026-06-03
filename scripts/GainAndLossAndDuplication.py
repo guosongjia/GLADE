@@ -139,17 +139,27 @@ def FindLossesAfterDuplications(gene_tree, species_tree, species_names):
 ## 2) find duplications and losses after duplications ##
 # to save duplications
 # function to do this in parallel
-def FindDuplicationsParallel(index, row, gain_nodes, ortho_folder_path, species_tree, gene_trees, species_names):
+def FindDuplicationsParallel(index, row, gain_nodes, ortho_folder_path, species_tree, gene_trees, species_names, og_to_genetree):
     duplications = []
-    # to save losses after duplications
     postduplication_loss = []
-    #gene_tree_file = list(gain_nodes.keys())[index] + "_tree.txt"
-    #gene_tree = ete3.Tree(os.path.join(ortho_folder_path, "HOG_Gene_Trees/", gene_tree_file), quoted_node_names=True, format=1)
-    orthogroup_name = list(gain_nodes.keys())[index]
-    if orthogroup_name not in gene_trees:
+    orthogroup_name = row['Orthogroup']
+    # Determine which gene tree actually contains this OG's genes.
+    # In OrthoFinder v3, OG names in Resolved_Gene_Trees don't correspond to
+    # the OG names in Orthogroups.tsv — a gene family tree may span multiple OGs.
+    tree_og = og_to_genetree.get(orthogroup_name)
+    if tree_og is None or tree_og not in gene_trees:
         return duplications, postduplication_loss
-    gene_tree= ete3.Tree(gene_trees[orthogroup_name], quoted_node_names=True, format=1)
-    dupe_list = FindDuplications(gene_tree, species_tree, species_names)
+    gene_tree = ete3.Tree(gene_trees[tree_og], quoted_node_names=True, format=1)
+    # Build set of genes that belong to this OG (from Orthogroups.tsv row)
+    og_members = set()
+    for col, value in row.items():
+        if col == 'Orthogroup' or not value:
+            continue
+        for gene in value.split(', '):
+            gene = gene.strip()
+            if gene:
+                og_members.add(gene)
+    dupe_list = FindDuplications(gene_tree, species_tree, species_names, og_members=og_members)
     for dupe in dupe_list:
         dupe['Orthogroup'] = row['Orthogroup']
         duplications.append(dupe)
@@ -209,12 +219,12 @@ def FindSpeciationLossParallel(index, row, ortho_folder_path, species_tree, OG_f
     return loss_nodes
 
 # parallel processing for dupes
-def ParaDupes(ortho_folder_path, species_tree, OG_file, gain_nodes, gene_trees, species_names, n_threads):
+def ParaDupes(ortho_folder_path, species_tree, OG_file, gain_nodes, gene_trees, species_names, n_threads, og_to_genetree):
     all_duplications = []
     all_postduplication_loss = []
     n_threads = max(1, min(n_threads, cpu_count()))
     with Pool(processes=n_threads) as pool:
-        results = pool.starmap(FindDuplicationsParallel, [(index, row, gain_nodes, ortho_folder_path, species_tree, gene_trees, species_names) for index, row in enumerate(OG_file)])
+        results = pool.starmap(FindDuplicationsParallel, [(index, row, gain_nodes, ortho_folder_path, species_tree, gene_trees, species_names, og_to_genetree) for index, row in enumerate(OG_file)])
     # Aggregate results
     for duplications, postduplication_loss in results:
         all_duplications.extend(duplications)
@@ -257,6 +267,15 @@ def main(ortho_folder_path, n_threads, min_genes=4):
             if ':' in line:
                 orthogroup, newick_str = line.split(":", 1)
                 gene_trees[orthogroup.strip()] = newick_str.strip()
+
+    # Build reverse index: gene leaf name -> gene tree OG name.
+    # OrthoFinder v3 uses different OG naming between Orthogroups.tsv and
+    # Resolved_Gene_Trees.txt — this index lets us find the correct tree.
+    gene_to_tree_og = {}
+    for tree_og, newick_str in gene_trees.items():
+        tree = ete3.Tree(newick_str, quoted_node_names=True, format=1)
+        for leaf in tree.get_leaf_names():
+            gene_to_tree_og[leaf] = tree_og
 
     
     ## load orthogroup file
@@ -319,8 +338,20 @@ def main(ortho_folder_path, n_threads, min_genes=4):
          entry = {'Orthogroup': key}
          entry.update(value)
          gains_list.append(entry)
-    
-    duplications, postduplication_loss = ParaDupes(ortho_folder_path, species_tree, OG_file, gain_nodes, gene_trees, species_names, n_threads)
+
+    # Map each OG (from Orthogroups.tsv) to the gene tree that contains its genes.
+    og_to_genetree = {}
+    for row in OG_file:
+        og_name = row['Orthogroup']
+        for col, value in row.items():
+            if col == 'Orthogroup' or not value:
+                continue
+            first_gene = value.split(', ')[0].strip()
+            if first_gene and first_gene in gene_to_tree_og:
+                og_to_genetree[og_name] = gene_to_tree_og[first_gene]
+                break
+
+    duplications, postduplication_loss = ParaDupes(ortho_folder_path, species_tree, OG_file, gain_nodes, gene_trees, species_names, n_threads, og_to_genetree)
     speciation_loss = ParaLoss(ortho_folder_path, species_tree, OG_file, gain_nodes, n_threads)
     
     ## make ancestral genomes folder, if not exist

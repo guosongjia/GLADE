@@ -55,7 +55,7 @@ def load_gene_tree_from_big_file(og, tree_file_path):
 
 # For a given orthogroup + species-tree node, pick representative leaf genes
 # for that ancestral genome (numeric version).
-def GetAncestralGenes(OG, node, species_tree, ortho_folder_path, species_names):
+def GetAncestralGenes(OG, node, species_tree, ortho_folder_path, species_names, og_members=None, tree_og=None):
     og = OG
     all_selected_sequences = []
 
@@ -63,7 +63,18 @@ def GetAncestralGenes(OG, node, species_tree, ortho_folder_path, species_names):
     tree_file_path = os.path.join(
         ortho_folder_path, "WorkingDirectory", "GladeWD", "Resolved_Gene_Trees.txt"
     )
-    gene_tree = load_gene_tree_from_big_file(og, tree_file_path)
+    # Use tree_og (the actual gene tree OG name) if provided, because OrthoFinder v3
+    # Resolved_Gene_Trees use different OG names than Orthogroups.tsv.
+    lookup_og = tree_og if tree_og else og
+    gene_tree = load_gene_tree_from_big_file(lookup_og, tree_file_path)
+
+    # Restrict to genes that actually belong to this OG (Orthogroups.tsv row).
+    # OrthoFinder v3 Resolved_Gene_Trees may span a wider HOG than the OG row.
+    if og_members:
+        leaves_to_keep = [l for l in gene_tree.get_leaves() if l.name in og_members]
+        if len(leaves_to_keep) < 2:
+            return None
+        gene_tree.prune(leaves_to_keep, preserve_branch_length=True)
 
     # Ensure the gene tree root is named "n0" for distance calculations
     gene_tree.name = "n0"
@@ -281,16 +292,20 @@ def WriteAncestralFasta(focal_node, ancestral_genome, ortho_folder_path):
         fasta_file.write(ancestral_genome)
 
 # Wrapper for multiprocessing OG by OG processing
-def ProcessOrthogroupCurrent(index, gains_current, node, species_tree, ortho_folder_path, species_names):
+def ProcessOrthogroupCurrent(index, gains_current, node, species_tree, ortho_folder_path, species_names, og_members_map, og_to_genetree):
     OG = gains_current[index]["Orthogroup"]
+    tree_og = og_to_genetree.get(OG)
+    if tree_og is None:
+        return OG, None
     tree_file_path = os.path.join(ortho_folder_path, "WorkingDirectory", "GladeWD", "Resolved_Gene_Trees.txt")
     with open(tree_file_path, "r") as f:
-        if not any(line.startswith(OG + ": ") for line in f):
+        if not any(line.startswith(tree_og + ": ") for line in f):
             return OG, None
-    return OG, GetAncestralGenes(OG, node, species_tree, ortho_folder_path, species_names)
+    og_members = og_members_map.get(OG)
+    return OG, GetAncestralGenes(OG, node, species_tree, ortho_folder_path, species_names, og_members=og_members, tree_og=tree_og)
 
 # Build ancestral genome for a single node
-def AncestralGenome(node, species_tree, ortho_folder_path, gains, species_names, n_threads):
+def AncestralGenome(node, species_tree, ortho_folder_path, gains, species_names, n_threads, og_members_map, og_to_genetree):
     focal_node = node.name
     target_node = species_tree.search_nodes(name=focal_node)[0]
 
@@ -313,7 +328,7 @@ def AncestralGenome(node, species_tree, ortho_folder_path, gains, species_names,
         results = pool.starmap(
             ProcessOrthogroupCurrent,
             [
-                (idx, gains_current, node, species_tree, ortho_folder_path, species_names)
+                (idx, gains_current, node, species_tree, ortho_folder_path, species_names, og_members_map, og_to_genetree)
                 for idx in range(len(gains_current))
             ],
         )
@@ -370,12 +385,50 @@ def main(ortho_folder_path, n_threads):
         for row in reader:
             gains.append(row)
 
+    # Load OG-to-members mapping from numeric Orthogroups.tsv so that we can
+    # prune the wider HOG-level Resolved_Gene_Trees down to the OG row members.
+    og_members_map = {}
+    og_tsv_path = os.path.join(ortho_folder_path, "WorkingDirectory/GladeWD/Orthogroups.tsv")
+    with open(og_tsv_path) as f:
+        reader = csv.DictReader(f, delimiter="\t")
+        for row in reader:
+            members = set()
+            for col, value in row.items():
+                if col == "Orthogroup" or not value:
+                    continue
+                for gene in value.split(", "):
+                    gene = gene.strip()
+                    if gene:
+                        members.add(gene)
+            og_members_map[row["Orthogroup"]] = members
+
+    # Build OG -> gene tree name mapping.
+    # OrthoFinder v3 Resolved_Gene_Trees use different OG names than Orthogroups.tsv,
+    # so we index gene leaves to find the correct tree for each OG.
+    gene_to_tree_og = {}
+    gt_path = os.path.join(ortho_folder_path, "WorkingDirectory/GladeWD/Resolved_Gene_Trees.txt")
+    with open(gt_path) as f:
+        for line in f:
+            if ':' in line:
+                tree_og, tree_str = line.split(':', 1)
+                tree_og = tree_og.strip()
+                tree = ete3.Tree(tree_str.strip(), quoted_node_names=True, format=1)
+                for leaf in tree.get_leaf_names():
+                    gene_to_tree_og[leaf] = tree_og
+
+    og_to_genetree = {}
+    for og_name, members in og_members_map.items():
+        for gene in members:
+            if gene in gene_to_tree_og:
+                og_to_genetree[og_name] = gene_to_tree_og[gene]
+                break
+
     # Reconstruct ancestral genome for every internal node
     node_list = []
     for node in species_tree.traverse("postorder"):
         if node.is_leaf():
             continue
-        AncestralGenome(node, species_tree, ortho_folder_path, gains, species_names, n_threads)
+        AncestralGenome(node, species_tree, ortho_folder_path, gains, species_names, n_threads, og_members_map, og_to_genetree)
         node_list.append(node.name)
 
     # Summaries from ancestral FASTAs
