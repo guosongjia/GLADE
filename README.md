@@ -82,7 +82,7 @@ python GLADE.py -f Results/ -g iqtree_trees/ -s species.treefile -t 16 -o output
 2. Align each OG (e.g. with MAFFT or MUSCLE)
 3. Run IQ-TREE on each alignment; no bootstrap needed:
    ```bash
-   iqtree -s OG0000000.aln -m MFP -T AUTO --prefix OG0000000 -redo
+   iqtree -s OG0000000.aln -m MFP -T AUTO --prefix OG0000000
    ```
 4. Collect all `.treefile` outputs in one directory and pass it to `-g`
 
