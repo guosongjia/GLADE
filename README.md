@@ -16,7 +16,7 @@ GLADE is a Python tool for reconstructing the full evolutionary history of ortho
 - [Output files](#Output-files)
 - [Example-data](#Example-data)
 - [Citation](#Citation)
-- [Notes on compatibility and bug fixes](#Notes-on-compatibility-and-bug-fixes)
+- [Compatibility notes](#Compatibility-notes)
 
 ## What is GLADE?
 
@@ -26,9 +26,9 @@ Given a complete OrthoFinder v3 run, GLADE:
 - Identifies where each orthogroup first appeared (gain)
 - Detects losses
 - Identifies gene duplication events
-- Reconstructs ancestral gene content at every internal node,
-- Quantifies orthogroup size changes along every branch,
-- Outputs complete evolutionary histories for all orthogroups.
+- Reconstructs ancestral gene content at every internal node
+- Quantifies orthogroup size changes along every branch
+- Outputs complete evolutionary histories for all orthogroups
 
 <p align="center">
 <img src="glade_workflow_.png" alt="workflow" width="700"/>
@@ -36,11 +36,9 @@ Given a complete OrthoFinder v3 run, GLADE:
 
 ## Installation
 
-GLADE requires Python 3.9 or later
+GLADE requires Python 3.9 or later and the same dependencies as OrthoFinder. We recommend running GLADE in an OrthoFinder conda environment.
 
-GLADE requires the same dependencies as OrthoFinder. We reccommend that you run GLADE in an orthofinder conda environment.
-
-See the OrthoFinder github for details on how to set this up https://github.com/OrthoFinder/OrthoFinder?tab=readme-ov-file#installation
+See the OrthoFinder GitHub for installation details: https://github.com/OrthoFinder/OrthoFinder?tab=readme-ov-file#installation
 
 ## Simple usage
 
@@ -56,52 +54,80 @@ python GLADE.py -f path/to/orthofinder/results -t threads [default=8]
 | `-t` / `--threads` | Number of threads | 8 |
 | `-m` / `--min-genes` | Minimum genes per OG for gain/loss analysis | 4 |
 | `-o` / `--output` | Output folder for final results | same as `-f` |
-| `-s` / `--species-tree` | Path to a custom species tree in Newick format (e.g. IQ-TREE treefile); overrides OrthoFinder species tree; internal node labels added automatically | OrthoFinder tree |
+| `-s` / `--species-tree` | Custom species tree in Newick format | OrthoFinder tree |
+| `-g` / `--gene-trees-dir` | Directory of per-OG IQ-TREE gene trees | OrthoFinder trees |
 
-**We strongly recommend providing a custom species tree via `-s`.** The OrthoFinder species tree is inferred from gene tree topologies using the STRIDE algorithm, which can place the root incorrectly when gene trees are noisy. A dedicated phylogenetic analysis (e.g. IQ-TREE on a supermatrix of single-copy orthologs) produces branch lengths and bootstrap support that are more reliable for downstream event mapping. The root position directly determines the direction of all inferred gains and losses, so an incorrectly rooted tree will systematically misplace events across the entire analysis.
+### Custom species tree (`-s`)
+
+**We strongly recommend providing a custom species tree via `-s`.** The OrthoFinder species tree is inferred from gene tree topologies using the STRIDE algorithm, which can place the root incorrectly when gene trees are noisy. A dedicated phylogenetic analysis (e.g. IQ-TREE on a supermatrix of single-copy orthologs) produces more reliable branch lengths and topology. The root position directly determines the direction of all inferred gains and losses.
 
 The custom tree must be:
-- **rooted** — the root position encodes the outgroup and determines event directionality; an unrooted tree (e.g. a raw IQ-TREE `.treefile` with a trifurcating root) will cause errors in downstream scripts
-- in **Newick format**
-- using **leaf names that match OrthoFinder species names** (i.e. the FASTA filenames without extension, e.g. `Schizosaccharomyces_pombe`)
+- **Rooted** — an unrooted tree (e.g. a raw IQ-TREE `.treefile` with a trifurcating root) will cause errors
+- In **Newick format**
+- Using **leaf names that match OrthoFinder species names** (FASTA filenames without extension, e.g. `Schizosaccharomyces_pombe`)
 
 Internal node labels are added automatically; you do not need to provide them.
 
-Use `-m 1` to include all OGs (including single-copy and small families) in gain/loss analysis. Duplication analysis is only performed for OGs with a resolved gene tree regardless of this setting.
+### External gene trees (`-g`)
+
+By default GLADE uses the gene trees produced by OrthoFinder (distance-based). You can substitute higher-quality ML gene trees built with IQ-TREE or another tool via `-g`.
+
+```bash
+python GLADE.py -f Results/ -g iqtree_trees/ -s species.treefile -t 16 -o output/
+```
+
+**Preparing gene trees for `-g`:**
+
+1. Extract per-OG sequences from OrthoFinder's `Orthogroups/Orthogroup_Sequences/`
+2. Align each OG (e.g. with MAFFT or MUSCLE)
+3. Run IQ-TREE on each alignment; no bootstrap needed:
+   ```bash
+   iqtree -s OG0000000.aln -m MFP -T AUTO --prefix OG0000000 -redo
+   ```
+4. Collect all `.treefile` outputs in one directory and pass it to `-g`
+
+**Requirements:**
+- File naming: `{OG}.treefile` (e.g. `OG0000000.treefile`)
+- Leaf names: `{Species}_{geneID}` (e.g. `Debaryomyces_hansenii_DEHA2A00748g`)
+- OG names must match `Orthogroups.tsv`
+- Trees do not need to be pre-rooted — GLADE roots each tree automatically using the OrthoFinder S_IO/S_AD algorithm
+- OGs without a `.treefile` are skipped; GLADE prints a coverage summary at startup
+
+### Other options
+
+Use `-m 1` to include all OGs (including single-copy and small families) in gain/loss analysis.
 
 Use `-o` to write `GainsLossDuplication/` and `AncestralGenomes/` to a custom path. Intermediate files in `WorkingDirectory/GladeWD/` are unaffected.
 
-If you are running GLADE on an OrthoFinder assign run - you need to add the proteomes from the core run to the assign results directory
+If you are running GLADE on an OrthoFinder assign run, copy the proteomes from the core run into the assign results `WorkingDirectory/`:
 
-e.g. cd to core/WorkingDirectory and cp *.fa to the assign/WorkingDirectory
-
+```bash
+cp core/WorkingDirectory/*.fa assign/WorkingDirectory/
+```
 
 ## Output files
 
 GLADE produces a structured directory containing:
 
-1. Gains, Losses, and Duplications (GainsLossDuplication/)
-- Gains.tsv — where each orthogroup first appeared
-- Loss_speciation.tsv — orthogroup losses due to speciation
-- Loss_postduplication.tsv — losses after duplication events
-- Duplications.tsv — duplication events with support values
-- Branch_statistics.tsv — event counts per species-tree branch
-- *_bybranch.tsv — expanded lists of orthogroups per event type
-- extant_OG_counts.tsv — gene counts in extant species
-- OrthogroupBranchChange.tsv — size changes per branch
+**GainsLossDuplication/**
+- `Gains.tsv` — where each orthogroup first appeared
+- `Loss_speciation.tsv` — orthogroup losses due to speciation
+- `Loss_postduplication.tsv` — losses after duplication events
+- `Duplications.tsv` — duplication events with support values
+- `Branch_statistics.tsv` — event counts per species-tree branch
+- `*_bybranch.tsv` — expanded lists of orthogroups per event type
+- `OrthogroupBranchChange.tsv` — size changes per branch
 
-2. AncestralGenomes/
-
-One FASTA file per internal node containing reconstructed ancestral sequences
-- AncestralGenomes.txt — summary statistics
-- Ancestral_HOG_counts.csv — orthogroup copy numbers for all nodes
+**AncestralGenomes/**
+- One FASTA per internal node containing reconstructed ancestral sequences
+- `AncestralGenomes.txt` — summary statistics
+- `Ancestral_HOG_counts.csv` — orthogroup copy numbers for all nodes
 
 ## Example data
 
-Unzip the ExampleData.zip file, which contains an OrthoFinder results directory on a small dataset.
-Then run:
+Unzip `ExampleData.zip`, which contains an OrthoFinder results directory on a small dataset. Then run:
 
-```
+```bash
 python GLADE.py -f ExampleData/OrthoFinder/Results_ExampleDataGLADE/
 ```
 
@@ -111,52 +137,37 @@ Belcher L.J. & Kelly S. (2026) GLADE: Accurate inference of Gains, Losses, Ances
 
 ---
 
-## Notes on compatibility and bug fixes
+## Compatibility notes
 
-The following issues were identified when running GLADE with OrthoFinder v3 output and have been patched in this copy of the scripts.
+The following issues were identified when running GLADE with OrthoFinder v3 output and have been patched.
 
 ### OrthoFinder output directory structure
 
-Newer versions of OrthoFinder place `Resolved_Gene_Trees/` inside `WorkingDirectory/` rather than in the results root. GLADE expects it at the results root. Fix: create the required input file manually before running GLADE:
+Newer versions of OrthoFinder place `Resolved_Gene_Trees/` inside `WorkingDirectory/` rather than in the results root. Create the required input file manually before running GLADE:
 
 ```bash
 mkdir -p path/to/Results/Resolved_Gene_Trees
-bash -c 'for f in path/to/Results/WorkingDirectory/Resolved_Gene_Trees/OG*.txt; do og=$(basename "$f" .txt); printf "%s: %s\n" "$og" "$(cat "$f")"; done > path/to/Results/Resolved_Gene_Trees/Resolved_Gene_Trees.txt'
+bash -c 'for f in path/to/Results/WorkingDirectory/Resolved_Gene_Trees/OG*.txt; do
+  og=$(basename "$f" .txt)
+  printf "%s: %s\n" "$og" "$(cat "$f")"
+done > path/to/Results/Resolved_Gene_Trees/Resolved_Gene_Trees.txt'
 ```
 
-Note: use `bash -c '...'` (non-interactive) to avoid terminal escape sequences being written into the file.
+Use `bash -c '...'` (non-interactive) to avoid terminal escape sequences being written into the file.
 
 ### ete3 visualization (PyQt5)
 
-`ete3.TreeStyle` and related classes require Qt. If running in a conda environment without Qt, install PyQt5 via pip:
+`ete3.TreeStyle` requires Qt. If running in a conda environment without Qt:
 
 ```bash
 pip install PyQt5
 ```
 
-### Bug fix: OGs without resolved gene trees cause KeyError (`GainAndLossAndDuplication.py`)
+### Bug fixes (v3.1.3 compatibility)
 
-Some OGs with ≥4 genes have no resolved gene tree (e.g. all genes from a single species). These caused a `KeyError` in `FindDuplicationsParallel`. Fixed by skipping such OGs in duplication analysis — they cannot have duplication events by definition.
+Several issues were identified and fixed when running GLADE against OrthoFinder v3.1.3:
 
-### Bug fix: OGs without resolved gene trees cause ValueError (`AncestralGenome.py`)
-
-The same class of OGs caused a `ValueError` in `ProcessOrthogroupCurrent`. Fixed by checking for the OG's presence in `Resolved_Gene_Trees.txt` before calling `GetAncestralGenes`, returning `None` if absent.
-
-### Bug fix: empty leaf set after pruning causes TreeError (`AncestralGenome.py`)
-
-In `GetAncestralGenes`, the second `gene_tree.prune()` call could receive an empty leaf list when all remaining leaves were flagged as post-duplication duplicates, causing `ete3.coretype.tree.TreeError: Nodes are not connected!`. Fixed by returning `None` when `keep_leaves` is empty.
-
-### New feature: `--min-genes` parameter
-
-The original script hard-codes `min_genes=4`, excluding small OGs from gain/loss analysis entirely. The threshold is now a command-line parameter (`-m`/`--min-genes`, default 4). Use `-m 1` to include all OGs.
-
-### New feature: `--species-tree` parameter
-
-A custom species tree in Newick format (e.g. from IQ-TREE) can be provided via `-s`/`--species-tree`, overriding the OrthoFinder species tree. Internal node labels are added automatically in postorder traversal (root = `N0`, others `N1`, `N2`, ...). Leaf names in the custom tree must match OrthoFinder species names (i.e. the FASTA filenames without extension, e.g. `Schizosaccharomyces_pombe`). All downstream scripts are unaffected — only `ConvertFiles.py` is modified.
-
-**Important:** the custom tree must be a rooted binary tree. A raw IQ-TREE `.treefile` is unrooted (trifurcating root) and must be rooted before use — for example using an outgroup in FigTree, `ete3`, or `gotree`. An unrooted tree will cause errors in `BranchGainLossDuplication.py`.
-
-### New feature: `--output` parameter
-
-Final results (`GainsLossDuplication/` and `AncestralGenomes/`) are now written to a user-specified directory via `-o`/`--output`. Intermediate files in `WorkingDirectory/GladeWD/` are unaffected.
-
+- **KeyError in `GainAndLossAndDuplication.py`**: OGs with ≥4 genes but no resolved gene tree (e.g. all genes from a single species) caused a `KeyError` in `FindDuplicationsParallel`. Fixed by skipping such OGs — they cannot have duplication events.
+- **ValueError in `AncestralGenome.py`**: The same class of OGs caused a `ValueError` in `ProcessOrthogroupCurrent`. Fixed by checking for the OG's presence in `Resolved_Gene_Trees.txt` before calling `GetAncestralGenes`.
+- **TreeError in `AncestralGenome.py`**: `GetAncestralGenes` could pass an empty leaf list to `gene_tree.prune()` when all remaining leaves were flagged as post-duplication duplicates. Fixed by returning `None` when `keep_leaves` is empty.
+- **OG–gene mismatch in `Duplications.tsv`**: OrthoFinder v3 uses different OG naming between `Orthogroups.tsv` and `Resolved_Gene_Trees.txt` — a single gene-family tree spans genes from multiple fine-grained orthogroups. GLADE previously assumed a 1:1 correspondence, producing duplication records where the OG label and gene names referred to completely different groups. Fixed by building a gene→gene-tree reverse index at startup and pruning each tree to its OG's actual members before duplication analysis.
