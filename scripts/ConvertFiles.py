@@ -320,11 +320,107 @@ def Convert_Species_Tree(Input, SpeciesDict, custom_tree_path=None):
 
 
 
-def main(ortho_folder_path, n_threads, custom_species_tree=None):
+def Convert_External_Gene_Trees(gene_trees_dir, ortho_folder_path, SpeciesDict, SequenceIDsDict, custom_species_tree=None):
+    """Load per-OG .treefile from gene_trees_dir, root with S_IO/S_AD, convert leaf names
+    to numeric format, and write merged GladeWD/Resolved_Gene_Trees.txt."""
+    import csv
+    from rooting import root_gene_tree
+
+    out_path = os.path.join(ortho_folder_path, "WorkingDirectory", "GladeWD", "Resolved_Gene_Trees.txt")
+
+    # Load rooted species tree for S_IO/S_AD
+    if custom_species_tree:
+        sp_tree = ete3.Tree(custom_species_tree, quoted_node_names=True, format=1)
+    else:
+        sp_tree = ete3.Tree(
+            os.path.join(ortho_folder_path, "Species_Tree", "SpeciesTree_rooted_node_labels.txt"),
+            quoted_node_names=True, format=1)
+    sp_tree.name = "N0"
+    sp_leaf_names = sorted(sp_tree.get_leaf_names(), key=len, reverse=True)
+
+    def gene_to_species(leaf_name):
+        for sp in sp_leaf_names:
+            if leaf_name.startswith(sp + "_"):
+                return sp
+        return leaf_name.split("_")[0]
+
+    # Load OG member sets for validation (gene names in {Species}_{geneID} format)
+    og_members = {}
+    og_tsv = os.path.join(ortho_folder_path, "Orthogroups", "Orthogroups.tsv")
+    with open(og_tsv) as f:
+        reader = csv.DictReader(f, delimiter="\t")
+        for row in reader:
+            members = set()
+            for col, value in row.items():
+                if col == "Orthogroup" or not value:
+                    continue
+                for g in value.split(", "):
+                    g = g.strip()
+                    if g:
+                        members.add(f"{col}_{g}")
+            og_members[row["Orthogroup"]] = members
+
+    treefiles = {
+        os.path.splitext(f)[0]: os.path.join(gene_trees_dir, f)
+        for f in os.listdir(gene_trees_dir) if f.endswith(".treefile")
+    }
+
+    total_ogs = len(og_members)
+    covered = 0
+    total_genes_covered = 0
+    total_genes_all = sum(len(v) for v in og_members.values())
+
+    with open(out_path, "w") as out:
+        for og_name, members in sorted(og_members.items()):
+            if og_name not in treefiles:
+                continue
+            try:
+                tree = ete3.Tree(treefiles[og_name], quoted_node_names=True, format=1)
+            except Exception as e:
+                print(f"  WARNING: could not load {treefiles[og_name]}: {e}")
+                continue
+
+            # Validate: leaves must be a subset of OG members
+            leaf_set = set(tree.get_leaf_names())
+            extra = leaf_set - members
+            if extra:
+                print(f"  ERROR: {og_name} tree has {len(extra)} leaves not in Orthogroups.tsv (e.g. {next(iter(extra))}). Skipping.")
+                continue
+            missing = members - leaf_set
+            if missing:
+                print(f"  WARNING: {og_name} tree missing {len(missing)}/{len(members)} OG members.")
+
+            # Root with S_IO/S_AD
+            ok = root_gene_tree(tree, sp_tree, gene_to_species)
+            if not ok:
+                print(f"  WARNING: could not root {og_name}, skipping.")
+                continue
+
+            # Rename internal nodes n0, n1, ... ; convert leaf names to numeric
+            for i, node in enumerate(tree.traverse()):
+                if node.is_leaf():
+                    node.name = convert_leaf(node.name, SpeciesDict, SequenceIDsDict)
+                else:
+                    node.name = f"n{i}"
+
+            out.write(f"{og_name}: {tree.write(format=1)}\n")
+            covered += 1
+            total_genes_covered += len(members)
+
+    pct = 100.0 * total_genes_covered / total_genes_all if total_genes_all else 0
+    print(f"  External gene trees: {covered}/{total_ogs} OGs covered "
+          f"({total_genes_covered}/{total_genes_all} genes, {pct:.1f}%). "
+          f"Remaining OGs skipped.")
+
+
+def main(ortho_folder_path, n_threads, custom_species_tree=None, gene_trees_dir=None):
     parent_output_file = os.path.join(ortho_folder_path, "WorkingDirectory", "GladeWD","GLADEfiles.tsv")
     os.makedirs(os.path.dirname(parent_output_file), exist_ok=True)
     SpeciesDict, SequenceIDsDict = File_Dictionaries(ortho_folder_path)
     Convert_Orthogroups_TXT(ortho_folder_path, SequenceIDsDict)
-    Convert_Gene_Trees(ortho_folder_path, SpeciesDict, SequenceIDsDict, n_threads)
+    if gene_trees_dir:
+        Convert_External_Gene_Trees(gene_trees_dir, ortho_folder_path, SpeciesDict, SequenceIDsDict, custom_species_tree)
+    else:
+        Convert_Gene_Trees(ortho_folder_path, SpeciesDict, SequenceIDsDict, n_threads)
     Convert_Species_Tree(ortho_folder_path, SpeciesDict, custom_tree_path=custom_species_tree)
 

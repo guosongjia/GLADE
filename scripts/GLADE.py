@@ -63,6 +63,15 @@ def main():
              "If provided, overrides the OrthoFinder species tree. "
              "Internal node labels will be added automatically."
     )
+    parser.add_argument(
+        '-g', '--gene-trees-dir',
+        type=str,
+        default=None,
+        help="Directory containing per-OG IQ-TREE gene trees as {OG}.treefile "
+             "(e.g. OG0000000.treefile). Leaf names must be {Species}_{geneID}. "
+             "GLADE will root each tree automatically using the S_IO/S_AD algorithm. "
+             "OGs without a .treefile are skipped."
+    )
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(1)
@@ -73,6 +82,7 @@ def main():
     min_genes = args.min_genes
     output_folder = args.output
     custom_species_tree = args.species_tree
+    gene_trees_dir = args.gene_trees_dir
 
     # print welcome messages
     print("---------------------------------------------------")
@@ -99,7 +109,7 @@ def main():
     # Execute the imported scripts' main functions sequentially
     print("---------------------------------------------------")
     print("Converting Files...")
-    ConvertFiles.main(ortho_folder_path, n_threads, custom_species_tree=custom_species_tree)
+    ConvertFiles.main(ortho_folder_path, n_threads, custom_species_tree=custom_species_tree, gene_trees_dir=gene_trees_dir)
     print("Files converted.")
     print("---------------------------------------------------")
     print("Finding Gains, Losses, Duplications...")
